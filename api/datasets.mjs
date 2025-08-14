@@ -1,32 +1,40 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, getDocs, orderBy, query } from "firebase/firestore";
 
+// Firebase config (using env vars for security)
 const firebaseConfig = {
-  apiKey: process.env.FIREBASE_API_KEY,
-  authDomain: process.env.FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.FIREBASE_PROJECT_ID,
-  storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.FIREBASE_APP_ID,
-  measurementId: process.env.FIREBASE_MEASUREMENT_ID,
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
+// Init Firebase
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 export default async function handler(req, res) {
   try {
-    const datasetsRef = collection(db, "datasets");
-    const q = query(datasetsRef, orderBy("createdAt", "desc"));
-    const querySnapshot = await getDocs(q);
+    // Query Firestore for datasets collection ordered by newest first
+    const q = query(collection(db, "datasets"), orderBy("createdAt", "desc"));
+    const snapshot = await getDocs(q);
 
-    const datasets = querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
+    const datasets = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        name: data.name || "Unnamed file",
+        url: data.url || null,
+        createdAt: data.createdAt || null
+      };
+    });
 
-    res.status(200).json(datasets);
+    res.status(200).json({ success: true, datasets });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error("Error fetching datasets:", error);
+    res.status(500).json({ success: false, error: error.message });
   }
 }

@@ -1,15 +1,33 @@
-import React, { useState, useRef } from 'react';
-import Icon from '../../../components/AppIcon';
-import Button from '../../../components/ui/Button';
-import { saveDataset } from "../../../services/firestoreService";
+import React, { useState, useRef } from "react";
+import Icon from "../../../components/AppIcon";
+import Button from "../../../components/ui/Button";
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { getFirestore, collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { initializeApp } from "firebase/app";
 
-const UploadZone = ({ isUploading: externalUploading }) => {
+// Client-side Firebase config (public vars)
+const firebaseConfig = {
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
+};
+
+// Initialize Firebase client-side
+const app = initializeApp(firebaseConfig);
+const storage = getStorage(app);
+const db = getFirestore(app);
+
+const UploadZone = ({ isUploading }) => {
   const [isDragOver, setIsDragOver] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
 
-  const supportedFormats = ['.xlsx', '.xls', '.csv'];
-  const maxFileSize = 10 * 1024 * 1024; // 10MB in bytes
+  const supportedFormats = [".xlsx", ".xls", ".csv"];
+  const maxFileSize = 10 * 1024 * 1024; // 10MB
 
   const handleDragOver = (e) => {
     e.preventDefault();
@@ -30,24 +48,33 @@ const UploadZone = ({ isUploading: externalUploading }) => {
 
   const handleFileSelection = async (files) => {
     const validFiles = files.filter(file => {
-      const extension = '.' + file.name.split('.').pop().toLowerCase();
-      return supportedFormats.includes(extension) && file.size <= maxFileSize;
+      const ext = "." + file.name.split(".").pop().toLowerCase();
+      return supportedFormats.includes(ext) && file.size <= maxFileSize;
     });
 
-    if (validFiles.length > 0) {
-      setIsUploading(true);
-      for (const file of validFiles) {
-        try {
-          await saveDataset(file);
-          console.log(`✅ Uploaded and saved ${file.name}`);
-        } catch (error) {
-          console.error(`❌ Failed to save ${file.name}:`, error);
-        }
+    if (validFiles.length === 0) return;
+
+    setUploading(true);
+    for (const file of validFiles) {
+      try {
+        // Upload file to Firebase Storage
+        const fileRef = ref(storage, `datasets/${Date.now()}_${file.name}`);
+        await uploadBytes(fileRef, file);
+        const url = await getDownloadURL(fileRef);
+
+        // Save metadata to Firestore
+        await addDoc(collection(db, "datasets"), {
+          name: file.name,
+          url,
+          createdAt: serverTimestamp(),
+        });
+
+        console.log(`✅ Uploaded and saved ${file.name}`);
+      } catch (error) {
+        console.error(`❌ Failed to upload ${file.name}:`, error);
       }
-      setIsUploading(false);
-    } else {
-      console.warn("⚠ No valid files to upload.");
     }
+    setUploading(false);
   };
 
   const handleFileInputChange = (e) => {
@@ -64,70 +91,43 @@ const UploadZone = ({ isUploading: externalUploading }) => {
       <div
         className={`
           relative border-2 border-dashed rounded-xl p-12 text-center transition-all duration-300
-          ${isDragOver ? 'border-primary bg-primary/5 scale-[1.02]' : 'border-border hover:border-primary/50 hover:bg-muted/30'}
-          ${(isUploading || externalUploading) ? 'pointer-events-none opacity-60' : 'cursor-pointer'}
+          ${isDragOver ? "border-primary bg-primary/5 scale-[1.02]" : "border-border hover:border-primary/50 hover:bg-muted/30"}
+          ${uploading ? "pointer-events-none opacity-60" : "cursor-pointer"}
         `}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         onClick={openFileDialog}
       >
-        {/* Upload Icon */}
         <div className="flex justify-center mb-6">
           <div className={`
             p-6 rounded-full transition-all duration-300
-            ${isDragOver ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}
+            ${isDragOver ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}
           `}>
             <Icon name="FileSpreadsheet" size={48} />
           </div>
         </div>
 
-        {/* Upload Text */}
         <div className="space-y-3 mb-8">
           <h3 className="text-xl font-semibold text-foreground">
-            {isDragOver ? 'Drop your Excel files here' : 'Upload Excel Files'}
+            {isDragOver ? "Drop your Excel files here" : "Upload Excel Files"}
           </h3>
           <p className="text-muted-foreground max-w-md mx-auto">
-            Drag and drop your Excel files here, or click to browse and select files from your computer.
+            Drag and drop your Excel files here, or click to browse and select files
           </p>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-8">
-          <Button
-            variant="default"
-            size="lg"
-            iconName="Upload"
-            iconPosition="left"
-            loading={isUploading || externalUploading}
-            disabled={isUploading || externalUploading}
-            onClick={(e) => {
-              e.stopPropagation();
-              openFileDialog();
-            }}
-          >
-            {(isUploading || externalUploading) ? 'Processing...' : 'Choose Files'}
-          </Button>
-          <div className="text-sm text-muted-foreground">or drag and drop files here</div>
-        </div>
+        <Button
+          variant="default"
+          size="lg"
+          iconName="Upload"
+          iconPosition="left"
+          loading={uploading}
+          disabled={uploading}
+        >
+          {uploading ? "Uploading..." : "Choose Files"}
+        </Button>
 
-        {/* File Requirements */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-          <div className="flex items-center justify-center space-x-2 text-muted-foreground">
-            <Icon name="FileType" size={16} />
-            <span>Formats: {supportedFormats.join(', ')}</span>
-          </div>
-          <div className="flex items-center justify-center space-x-2 text-muted-foreground">
-            <Icon name="HardDrive" size={16} />
-            <span>Max size: 10MB</span>
-          </div>
-          <div className="flex items-center justify-center space-x-2 text-muted-foreground">
-            <Icon name="Shield" size={16} />
-            <span>Secure upload</span>
-          </div>
-        </div>
-
-        {/* Hidden File Input */}
         <input
           ref={fileInputRef}
           type="file"
@@ -136,18 +136,6 @@ const UploadZone = ({ isUploading: externalUploading }) => {
           onChange={handleFileInputChange}
           className="hidden"
         />
-
-        {/* Loading Overlay */}
-        {(isUploading || externalUploading) && (
-          <div className="absolute inset-0 bg-surface/80 rounded-xl flex items-center justify-center">
-            <div className="flex flex-col items-center space-y-4">
-              <div className="animate-spin">
-                <Icon name="Loader2" size={32} className="text-primary" />
-              </div>
-              <p className="text-sm font-medium text-foreground">Processing files...</p>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

@@ -1,5 +1,17 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, addDoc, getDocs } from "firebase/firestore";
+import { 
+  getFirestore, 
+  collection, 
+  addDoc, 
+  getDocs, 
+  serverTimestamp 
+} from "firebase/firestore";
+import { 
+  getStorage, 
+  ref, 
+  uploadBytes, 
+  getDownloadURL 
+} from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -13,9 +25,36 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const storage = getStorage(app);
 
+/**
+ * Save dataset with file upload to Firebase Storage + Firestore
+ * @param {Object} dataset - { file: File, [other metadata] }
+ * @returns {Promise<string>} - Document ID
+ */
 export const saveDataset = async (dataset) => {
-  const docRef = await addDoc(collection(db, "datasets"), dataset);
+  let fileURL = null;
+
+  // If a File object is provided, upload it
+  if (dataset.file instanceof File) {
+    const storageRef = ref(storage, `datasets/${dataset.file.name}`);
+    await uploadBytes(storageRef, dataset.file);
+    fileURL = await getDownloadURL(storageRef);
+  }
+
+  // Prepare Firestore doc
+  const docData = {
+    name: dataset.file?.name || dataset.name || "Untitled",
+    url: fileURL || dataset.url || null,
+    createdAt: serverTimestamp(),
+    ...dataset, // keep any extra metadata
+  };
+
+  // Remove the File object before saving
+  delete docData.file;
+
+  // Save to Firestore
+  const docRef = await addDoc(collection(db, "datasets"), docData);
   return docRef.id;
 };
 

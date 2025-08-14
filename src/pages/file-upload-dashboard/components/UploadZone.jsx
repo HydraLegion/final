@@ -1,27 +1,7 @@
 import React, { useState, useRef } from 'react';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
-
-// Firebase imports
-import { initializeApp } from "firebase/app";
-import { getFirestore, collection, addDoc, serverTimestamp } from "firebase/firestore";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
-
-// Firebase config
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const storage = getStorage(app);
+import { saveDataset } from "../../../services/firestoreService";
 
 const UploadZone = ({ isUploading }) => {
   const [isDragOver, setIsDragOver] = useState(false);
@@ -56,23 +36,11 @@ const UploadZone = ({ isUploading }) => {
     if (validFiles?.length > 0) {
       for (const file of validFiles) {
         try {
-          // 1. Upload to Firebase Storage
-          const storageRef = ref(storage, `datasets/${file.name}`);
-          await uploadBytes(storageRef, file);
-
-          // 2. Get file download URL
-          const downloadURL = await getDownloadURL(storageRef);
-
-          // 3. Save metadata in Firestore
-          await addDoc(collection(db, "datasets"), {
-            name: file.name,
-            url: downloadURL,
-            createdAt: serverTimestamp()
-          });
-
+          // Call our service to upload & save metadata
+          await saveDataset({ file, timestamp: new Date().toISOString() });
           console.log(`✅ Uploaded and saved ${file.name}`);
         } catch (error) {
-          console.error(`❌ Error uploading ${file.name}:`, error);
+          console.error(`❌ Failed to save ${file.name}:`, error);
         }
       }
     }

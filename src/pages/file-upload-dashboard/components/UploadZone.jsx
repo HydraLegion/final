@@ -3,56 +3,60 @@ import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 import { saveDataset } from "../../../services/firestoreService";
 
-const UploadZone = ({ isUploading }) => {
+const UploadZone = ({ isUploading: externalUploading }) => {
   const [isDragOver, setIsDragOver] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef(null);
 
   const supportedFormats = ['.xlsx', '.xls', '.csv'];
-  const maxFileSize = '10MB';
+  const maxFileSize = 10 * 1024 * 1024; // 10MB in bytes
 
   const handleDragOver = (e) => {
-    e?.preventDefault();
+    e.preventDefault();
     setIsDragOver(true);
   };
 
   const handleDragLeave = (e) => {
-    e?.preventDefault();
+    e.preventDefault();
     setIsDragOver(false);
   };
 
   const handleDrop = (e) => {
-    e?.preventDefault();
+    e.preventDefault();
     setIsDragOver(false);
-    const files = Array.from(e?.dataTransfer?.files);
+    const files = Array.from(e.dataTransfer.files);
     handleFileSelection(files);
   };
 
   const handleFileSelection = async (files) => {
-    const validFiles = files?.filter(file => {
-      const extension = '.' + file?.name?.split('.')?.pop()?.toLowerCase();
-      return supportedFormats.includes(extension) && file?.size <= 10 * 1024 * 1024;
+    const validFiles = files.filter(file => {
+      const extension = '.' + file.name.split('.').pop().toLowerCase();
+      return supportedFormats.includes(extension) && file.size <= maxFileSize;
     });
 
-    if (validFiles?.length > 0) {
+    if (validFiles.length > 0) {
+      setIsUploading(true);
       for (const file of validFiles) {
         try {
-          // Call our service to upload & save metadata
-          await saveDataset({ file, timestamp: new Date().toISOString() });
+          await saveDataset(file);
           console.log(`✅ Uploaded and saved ${file.name}`);
         } catch (error) {
           console.error(`❌ Failed to save ${file.name}:`, error);
         }
       }
+      setIsUploading(false);
+    } else {
+      console.warn("⚠ No valid files to upload.");
     }
   };
 
   const handleFileInputChange = (e) => {
-    const files = Array.from(e?.target?.files);
+    const files = Array.from(e.target.files);
     handleFileSelection(files);
   };
 
   const openFileDialog = () => {
-    fileInputRef?.current?.click();
+    fileInputRef.current.click();
   };
 
   return (
@@ -60,11 +64,8 @@ const UploadZone = ({ isUploading }) => {
       <div
         className={`
           relative border-2 border-dashed rounded-xl p-12 text-center transition-all duration-300
-          ${isDragOver 
-            ? 'border-primary bg-primary/5 scale-[1.02]' 
-            : 'border-border hover:border-primary/50 hover:bg-muted/30'
-          }
-          ${isUploading ? 'pointer-events-none opacity-60' : 'cursor-pointer'}
+          ${isDragOver ? 'border-primary bg-primary/5 scale-[1.02]' : 'border-border hover:border-primary/50 hover:bg-muted/30'}
+          ${(isUploading || externalUploading) ? 'pointer-events-none opacity-60' : 'cursor-pointer'}
         `}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -87,7 +88,7 @@ const UploadZone = ({ isUploading }) => {
             {isDragOver ? 'Drop your Excel files here' : 'Upload Excel Files'}
           </h3>
           <p className="text-muted-foreground max-w-md mx-auto">
-            Drag and drop your Excel files here, or click to browse and select files from your computer
+            Drag and drop your Excel files here, or click to browse and select files from your computer.
           </p>
         </div>
 
@@ -98,19 +99,16 @@ const UploadZone = ({ isUploading }) => {
             size="lg"
             iconName="Upload"
             iconPosition="left"
-            loading={isUploading}
-            disabled={isUploading}
+            loading={isUploading || externalUploading}
+            disabled={isUploading || externalUploading}
             onClick={(e) => {
-              e?.stopPropagation();
+              e.stopPropagation();
               openFileDialog();
             }}
           >
-            {isUploading ? 'Processing...' : 'Choose Files'}
+            {(isUploading || externalUploading) ? 'Processing...' : 'Choose Files'}
           </Button>
-          
-          <div className="text-sm text-muted-foreground">
-            or drag and drop files here
-          </div>
+          <div className="text-sm text-muted-foreground">or drag and drop files here</div>
         </div>
 
         {/* File Requirements */}
@@ -121,7 +119,7 @@ const UploadZone = ({ isUploading }) => {
           </div>
           <div className="flex items-center justify-center space-x-2 text-muted-foreground">
             <Icon name="HardDrive" size={16} />
-            <span>Max size: {maxFileSize}</span>
+            <span>Max size: 10MB</span>
           </div>
           <div className="flex items-center justify-center space-x-2 text-muted-foreground">
             <Icon name="Shield" size={16} />
@@ -140,7 +138,7 @@ const UploadZone = ({ isUploading }) => {
         />
 
         {/* Loading Overlay */}
-        {isUploading && (
+        {(isUploading || externalUploading) && (
           <div className="absolute inset-0 bg-surface/80 rounded-xl flex items-center justify-center">
             <div className="flex flex-col items-center space-y-4">
               <div className="animate-spin">

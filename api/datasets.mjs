@@ -1,7 +1,14 @@
-// /api/datasets.js (or .mjs if using ESM)
-import { initializeApp } from "firebase/app";
-import { getFirestore, collection, getDocs, orderBy, query } from "firebase/firestore";
+// api/datasets.js
+import { initializeApp, getApps } from "firebase/app";
+import {
+  getFirestore,
+  collection,
+  getDocs,
+  orderBy,
+  query,
+} from "firebase/firestore";
 
+// Read env from Vercel (server has no import.meta.env)
 const firebaseConfig = {
   apiKey: process.env.VITE_FIREBASE_API_KEY,
   authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -12,24 +19,36 @@ const firebaseConfig = {
   measurementId: process.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+function getDb() {
+  const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+  return getFirestore(app);
+}
 
 export default async function handler(req, res) {
   try {
+    const db = getDb();
     const q = query(collection(db, "datasets"), orderBy("createdAt", "desc"));
-    const snapshot = await getDocs(q);
-
-    const datasets = snapshot.docs.map(doc => ({
-      id: doc.id,
-      name: doc.data().name || "Unnamed file",
-      url: doc.data().url || "",
-      createdAt: doc.data().createdAt?.toDate?.().toISOString() || null
-    }));
+    const snap = await getDocs(q);
+    const datasets = snap.docs.map((d) => {
+      const data = d.data();
+      return {
+        id: d.id,
+        name: data.name || "Unnamed",
+        url: data.url || null,
+        path: data.path || null,
+        size: data.size ?? null,
+        contentType: data.contentType ?? null,
+        createdAt: data.createdAt?.toDate
+          ? data.createdAt.toDate().toISOString()
+          : null,
+      };
+    });
 
     res.status(200).json({ success: true, datasets });
-  } catch (error) {
-    console.error("Error fetching datasets:", error);
-    res.status(500).json({ success: false, error: error.message });
+  } catch (err) {
+    console.error("GET /api/datasets failed:", err);
+    res
+      .status(500)
+      .json({ success: false, error: err?.message || "Internal error" });
   }
 }

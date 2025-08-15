@@ -2,7 +2,7 @@ import React, { useState, useRef } from "react";
 import Icon from "../../../components/AppIcon";
 import Button from "../../../components/ui/Button";
 import { initializeApp } from "firebase/app";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { getFirestore, collection, addDoc, serverTimestamp } from "firebase/firestore";
 
 // Firebase config
@@ -24,6 +24,7 @@ const db = getFirestore(app);
 const UploadZone = ({ isUploading, setDatasets }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
   const fileInputRef = useRef(null);
 
   const supportedFormats = [".xlsx", ".xls", ".csv"];
@@ -52,6 +53,11 @@ const UploadZone = ({ isUploading, setDatasets }) => {
   };
 
   const handleFileSelection = async (files) => {
+    if (!firebaseConfig.storageBucket) {
+      console.error("❌ Firebase storageBucket is missing. Check your .env file.");
+      return;
+    }
+
     const validFiles = files.filter(
       (file) =>
         supportedFormats.includes("." + file.name.split(".").pop().toLowerCase()) &&
@@ -62,10 +68,25 @@ const UploadZone = ({ isUploading, setDatasets }) => {
       for (const file of validFiles) {
         try {
           setUploading(true);
+          setProgress(0);
 
-          // Upload to Firebase Storage
-          const storageRef = ref(storage, `datasets/${file.name}`);
-          await uploadBytes(storageRef, file);
+          // Upload with progress tracking
+          const storageRef = ref(storage, `datasets/${Date.now()}-${file.name}`);
+          const uploadTask = uploadBytesResumable(storageRef, file);
+
+          await new Promise((resolve, reject) => {
+            uploadTask.on(
+              "state_changed",
+              (snapshot) => {
+                const pct = Math.round(
+                  (snapshot.bytesTransferred / snapshot.totalBytes) * 100
+                );
+                setProgress(pct);
+              },
+              reject, // error handler
+              resolve // complete handler
+            );
+          });
 
           // Get download URL
           const url = await getDownloadURL(storageRef);
@@ -77,11 +98,12 @@ const UploadZone = ({ isUploading, setDatasets }) => {
             createdAt: serverTimestamp(),
           });
 
-          console.log(`✅ Uploaded ${file.name}`);
+          console.log(`✅ Uploaded ${file.name} and saved to Firestore`);
 
           // Fetch updated datasets from API
           const res = await fetch("/api/datasets");
           const data = await res.json();
+          console.log("📥 Updated datasets:", data);
           if (data.success) {
             setDatasets(data.datasets);
           }
@@ -89,6 +111,7 @@ const UploadZone = ({ isUploading, setDatasets }) => {
           console.error(`❌ Failed to upload ${file.name}:`, error);
         } finally {
           setUploading(false);
+          setProgress(0);
         }
       }
     }
@@ -141,24 +164,9 @@ const UploadZone = ({ isUploading, setDatasets }) => {
               openFileDialog();
             }}
           >
-            {uploading ? "Processing..." : "Choose Files"}
+            {uploading ? `Uploading ${progress}%` : "Choose Files"}
           </Button>
           <div className="text-sm text-muted-foreground">or drag and drop files here</div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-          <div className="flex items-center justify-center space-x-2 text-muted-foreground">
-            <Icon name="FileType" size={16} />
-            <span>Formats: {supportedFormats.join(", ")}</span>
-          </div>
-          <div className="flex items-center justify-center space-x-2 text-muted-foreground">
-            <Icon name="HardDrive" size={16} />
-            <span>Max size: 10MB</span>
-          </div>
-          <div className="flex items-center justify-center space-x-2 text-muted-foreground">
-            <Icon name="Shield" size={16} />
-            <span>Secure upload</span>
-          </div>
         </div>
 
         <input
@@ -171,13 +179,13 @@ const UploadZone = ({ isUploading, setDatasets }) => {
         />
 
         {uploading && (
-          <div className="absolute inset-0 bg-surface/80 rounded-xl flex items-center justify-center">
-            <div className="flex flex-col items-center space-y-4">
-              <div className="animate-spin">
-                <Icon name="Loader2" size={32} className="text-primary" />
-              </div>
-              <p className="text-sm font-medium text-foreground">Processing files...</p>
+          <div className="absolute inset-0 bg-surface/80 rounded-xl flex flex-col items-center justify-center">
+            <div className="animate-spin">
+              <Icon name="Loader2" size={32} className="text-primary" />
             </div>
+            <p className="text-sm font-medium text-foreground mt-2">
+              Uploading... {progress}%
+            </p>
           </div>
         )}
       </div>

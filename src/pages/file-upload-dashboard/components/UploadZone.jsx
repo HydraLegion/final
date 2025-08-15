@@ -1,131 +1,65 @@
-import React, { useState, useRef } from "react";
-import Icon from "../../../components/AppIcon";
-import Button from "../../../components/ui/Button";
+import React, { useState } from "react";
+import { initializeApp } from "firebase/app";
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { getFirestore, collection, addDoc, serverTimestamp } from "firebase/firestore";
 
-// ✅ Use your centralized Firebase client
-import { storage, db } from "../../../lib/firebaseClient";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+// Firebase config (reads from .env)
+const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET, // ✅ must be airavat-75089.appspot.com
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
+};
 
-const UploadZone = ({ isUploading: parentUploading }) => {
-  const [isDragOver, setIsDragOver] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const fileInputRef = useRef(null);
+// Init Firebase
+const app = initializeApp(firebaseConfig);
+const storage = getStorage(app);
+const db = getFirestore(app);
 
-  const supportedFormats = [".xlsx", ".xls", ".csv"];
-  const maxFileSize = 10 * 1024 * 1024; // 10MB
+export default function UploadZone() {
+  const [file, setFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
 
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    setIsDragOver(true);
+  const handleFileChange = (e) => {
+    setFile(e.target.files[0]);
   };
 
-  const handleDragLeave = (e) => {
-    e.preventDefault();
-    setIsDragOver(false);
-  };
+  const handleUpload = async () => {
+    if (!file) return alert("Please select a file first!");
+    setUploading(true);
 
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    const files = Array.from(e.dataTransfer.files);
-    handleFileSelection(files);
-  };
+    try {
+      // Upload file to storage
+      const storageRef = ref(storage, `uploads/${file.name}`);
+      await uploadBytes(storageRef, file);
+      const fileURL = await getDownloadURL(storageRef);
 
-  const handleFileSelection = async (files) => {
-    const validFiles = files.filter((file) => {
-      const extension = "." + file.name.split(".").pop().toLowerCase();
-      return supportedFormats.includes(extension) && file.size <= maxFileSize;
-    });
+      // Save file info in Firestore
+      await addDoc(collection(db, "datasets"), {
+        name: file.name,
+        url: fileURL,
+        createdAt: serverTimestamp(),
+      });
 
-    if (validFiles.length === 0) {
-      alert("No valid files selected.");
-      return;
+      alert("File uploaded successfully!");
+      setFile(null);
+    } catch (err) {
+      console.error("Upload failed:", err);
+      alert(`❌ Failed to upload ${file.name}: ${err.message}`);
     }
 
-    setIsUploading(true);
-    for (const file of validFiles) {
-      try {
-        // Upload to Firebase Storage
-        const fileRef = ref(storage, `uploads/${Date.now()}_${file.name}`);
-        await uploadBytes(fileRef, file);
-
-        // Get Download URL
-        const downloadURL = await getDownloadURL(fileRef);
-
-        // Save metadata to Firestore
-        await addDoc(collection(db, "datasets"), {
-          name: file.name,
-          url: downloadURL,
-          createdAt: serverTimestamp(),
-        });
-
-        console.log(`✅ Uploaded: ${file.name}`);
-      } catch (error) {
-        console.error(`❌ Failed to upload ${file.name}:`, error);
-      }
-    }
-    setIsUploading(false);
-  };
-
-  const handleFileInputChange = (e) => {
-    const files = Array.from(e.target.files);
-    handleFileSelection(files);
-  };
-
-  const openFileDialog = () => {
-    fileInputRef.current.click();
+    setUploading(false);
   };
 
   return (
-    <div className="w-full max-w-4xl mx-auto">
-      <div
-        className={`relative border-2 border-dashed rounded-xl p-12 text-center transition-all duration-300
-          ${isDragOver ? "border-primary bg-primary/5 scale-[1.02]" : "border-border hover:border-primary/50 hover:bg-muted/30"}
-          ${isUploading || parentUploading ? "pointer-events-none opacity-60" : "cursor-pointer"}
-        `}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        onClick={openFileDialog}
-      >
-        <div className="flex justify-center mb-6">
-          <div className={`p-6 rounded-full ${isDragOver ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
-            <Icon name="FileSpreadsheet" size={48} />
-          </div>
-        </div>
-
-        <div className="space-y-3 mb-8">
-          <h3 className="text-xl font-semibold">
-            {isDragOver ? "Drop your Excel files here" : "Upload Excel Files"}
-          </h3>
-          <p className="text-muted-foreground max-w-md mx-auto">
-            Drag and drop or click to select files
-          </p>
-        </div>
-
-        <Button
-          variant="default"
-          size="lg"
-          iconName="Upload"
-          iconPosition="left"
-          loading={isUploading}
-          disabled={isUploading}
-        >
-          {isUploading ? "Processing..." : "Choose Files"}
-        </Button>
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          accept=".xlsx,.xls,.csv"
-          onChange={handleFileInputChange}
-          className="hidden"
-        />
-      </div>
+    <div>
+      <input type="file" onChange={handleFileChange} />
+      <button onClick={handleUpload} disabled={uploading}>
+        {uploading ? "Uploading..." : "Upload"}
+      </button>
     </div>
   );
-};
-
-export default UploadZone;
+}

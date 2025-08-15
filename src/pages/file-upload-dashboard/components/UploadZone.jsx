@@ -49,6 +49,12 @@ export default function UploadZone() {
          url,
   createdAt: serverTimestamp(),
   });
+      // Fetch latest datasets and update UI
+const res = await fetch("/api/datasets");
+const data = await res.json();
+console.log("Updated datasets:", data.datasets);
+// Optionally pass this to your parent component's state
+
 
 
       alert(`✅ Uploaded: ${file.name}`);

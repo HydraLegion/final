@@ -3,7 +3,7 @@ import Icon from "../../../components/AppIcon";
 import Button from "../../../components/ui/Button";
 
 // ✅ Use your centralized Firebase client
-import { storage, db } from "../lib/firebaseClient";
+import { storage, db } from "../../lib/firebaseClient";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 

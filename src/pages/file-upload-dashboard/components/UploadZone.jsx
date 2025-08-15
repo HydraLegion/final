@@ -45,10 +45,11 @@ export default function UploadZone() {
 
       // Save metadata in Firestore
       await addDoc(collection(db, "datasets"), {
-        name: file.name,
-        url,
-        createdAt: serverTimestamp(),
-      });
+         name: file.name,
+         url,
+  createdAt: serverTimestamp(),
+  });
+
 
       alert(`✅ Uploaded: ${file.name}`);
     } catch (err) {

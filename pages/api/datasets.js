@@ -1,10 +1,16 @@
 import { initializeApp } from "firebase/app";
+import { adminDb } from "../../lib/firebaseserver";
 import {
   getStorage,
   ref,
   listAll,
   getDownloadURL,
 } from "firebase/storage";
+  try {
+    const snapshot = await adminDb
+      .collection("datasets")
+      .orderBy("createdAt", "desc")
+      .get();
 
 const firebaseConfig = {
   apiKey: process.env.VITE_FIREBASE_API_KEY,
@@ -19,6 +25,10 @@ const firebaseConfig = {
 // Init Firebase
 const app = initializeApp(firebaseConfig);
 const storage = getStorage(app);
+const datasets = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));    
 
 export default async function handler(req, res) {
   try {

@@ -1,7 +1,20 @@
 // /api/datasets.js
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, getDocs, orderBy, query } from "firebase/firestore";
+import admin from "firebase-admin";
 
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId: process.env.FIREBASE_ADMIN_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
+      privateKey: process.env.FIREBASE_ADMIN_PRIVATE_KEY.replace(/\\n/g, "\n"),
+    }),
+    storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET, // optional
+  });
+}
+export const adminDb = admin.firestore();
+export const adminStorage = admin.storage();
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -49,3 +62,4 @@ export async function GET() {
     );
   }
 }
+

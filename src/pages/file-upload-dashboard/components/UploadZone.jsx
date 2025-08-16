@@ -2,7 +2,7 @@
 import React, { useState, useRef } from "react";
 import Icon from "../../../components/AppIcon";
 import Button from "../../../components/ui/Button";
-import { storage, db } from "../lib/firebaseClient";
+import { storage, db } from "../../lib/firebaseClient";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 

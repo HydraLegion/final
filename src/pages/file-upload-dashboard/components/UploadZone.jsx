@@ -2,8 +2,13 @@ import React, { useState, useRef } from "react";
 import Icon from "../../../components/AppIcon";
 import Button from "../../../components/ui/Button";
 import { initializeApp } from "firebase/app";
-import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
-import { getFirestore, collection, addDoc, serverTimestamp } from "firebase/firestore";
+import {
+  getStorage,
+  ref,
+  uploadBytes,
+  getDownloadURL,
+  listAll,
+} from "firebase/storage";
 
 // Firebase config
 const firebaseConfig = {
@@ -19,12 +24,10 @@ const firebaseConfig = {
 // Init Firebase
 const app = initializeApp(firebaseConfig);
 const storage = getStorage(app);
-const db = getFirestore(app);
 
-const UploadZone = ({ isUploading, setDatasets }) => {
+const UploadZone = ({ setDatasets }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
   const fileInputRef = useRef(null);
 
   const supportedFormats = [".xlsx", ".xls", ".csv"];
@@ -53,11 +56,6 @@ const UploadZone = ({ isUploading, setDatasets }) => {
   };
 
   const handleFileSelection = async (files) => {
-    if (!firebaseConfig.storageBucket) {
-      console.error("❌ Firebase storageBucket is missing. Check your .env file.");
-      return;
-    }
-
     const validFiles = files.filter(
       (file) =>
         supportedFormats.includes("." + file.name.split(".").pop().toLowerCase()) &&
@@ -68,42 +66,16 @@ const UploadZone = ({ isUploading, setDatasets }) => {
       for (const file of validFiles) {
         try {
           setUploading(true);
-          setProgress(0);
 
-          // Upload with progress tracking
-          const storageRef = ref(storage, `datasets/${Date.now()}-${file.name}`);
-          const uploadTask = uploadBytesResumable(storageRef, file);
+          // Upload to Firebase Storage
+          const storageRef = ref(storage, `datasets/${file.name}`);
+          await uploadBytes(storageRef, file);
 
-          await new Promise((resolve, reject) => {
-            uploadTask.on(
-              "state_changed",
-              (snapshot) => {
-                const pct = Math.round(
-                  (snapshot.bytesTransferred / snapshot.totalBytes) * 100
-                );
-                setProgress(pct);
-              },
-              reject, // error handler
-              resolve // complete handler
-            );
-          });
+          console.log(`✅ Uploaded ${file.name}`);
 
-          // Get download URL
-          const url = await getDownloadURL(storageRef);
-
-          // Save metadata in Firestore
-          await addDoc(collection(db, "datasets"), {
-            name: file.name,
-            url,
-            createdAt: serverTimestamp(),
-          });
-
-          console.log(`✅ Uploaded ${file.name} and saved to Firestore`);
-
-          // Fetch updated datasets from API
+          // Refresh datasets list from API
           const res = await fetch("/api/datasets");
           const data = await res.json();
-          console.log("📥 Updated datasets:", data);
           if (data.success) {
             setDatasets(data.datasets);
           }
@@ -111,7 +83,6 @@ const UploadZone = ({ isUploading, setDatasets }) => {
           console.error(`❌ Failed to upload ${file.name}:`, error);
         } finally {
           setUploading(false);
-          setProgress(0);
         }
       }
     }
@@ -142,32 +113,26 @@ const UploadZone = ({ isUploading, setDatasets }) => {
           </div>
         </div>
 
-        <div className="space-y-3 mb-8">
-          <h3 className="text-xl font-semibold text-foreground">
-            {isDragOver ? "Drop your Excel files here" : "Upload Excel Files"}
-          </h3>
-          <p className="text-muted-foreground max-w-md mx-auto">
-            Drag and drop your Excel files here, or click to browse and select files from your computer
-          </p>
-        </div>
+        <h3 className="text-xl font-semibold mb-2">
+          {isDragOver ? "Drop your Excel files here" : "Upload Excel Files"}
+        </h3>
+        <p className="text-muted-foreground mb-6">
+          Drag and drop Excel files here, or click to browse.
+        </p>
 
-        <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-8">
-          <Button
-            variant="default"
-            size="lg"
-            iconName="Upload"
-            iconPosition="left"
-            loading={uploading}
-            disabled={uploading}
-            onClick={(e) => {
-              e.stopPropagation();
-              openFileDialog();
-            }}
-          >
-            {uploading ? `Uploading ${progress}%` : "Choose Files"}
-          </Button>
-          <div className="text-sm text-muted-foreground">or drag and drop files here</div>
-        </div>
+        <Button
+          variant="default"
+          size="lg"
+          iconName="Upload"
+          loading={uploading}
+          disabled={uploading}
+          onClick={(e) => {
+            e.stopPropagation();
+            openFileDialog();
+          }}
+        >
+          {uploading ? "Processing..." : "Choose Files"}
+        </Button>
 
         <input
           ref={fileInputRef}
@@ -177,17 +142,6 @@ const UploadZone = ({ isUploading, setDatasets }) => {
           onChange={handleFileInputChange}
           className="hidden"
         />
-
-        {uploading && (
-          <div className="absolute inset-0 bg-surface/80 rounded-xl flex flex-col items-center justify-center">
-            <div className="animate-spin">
-              <Icon name="Loader2" size={32} className="text-primary" />
-            </div>
-            <p className="text-sm font-medium text-foreground mt-2">
-              Uploading... {progress}%
-            </p>
-          </div>
-        )}
       </div>
     </div>
   );
